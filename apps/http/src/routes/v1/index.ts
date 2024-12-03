@@ -1,14 +1,20 @@
 import { Router } from "express";
-import { userRouter } from "./user.js";
-import { spaceRouter } from "./space.js";
-import { adminRouter } from "./admin.js";
-import { SignupSchema, SigninSchema } from "../../types/index.js";
+import { userRouter } from "./user";
+import { spaceRouter } from "./space";
+import { adminRouter } from "./admin";
+import { SignupSchema, SigninSchema } from "../../types/index";
 import client from "@repo/db"
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
-import { JWT_SECRET } from "../../config.js";
+
+import { JWT_SECRET } from "../../config";
+import { adminMiddleware } from "../../middleware/admin";
 
 export const router = Router()
+
+router.get("/testing", (req, res) => {
+    res.send("testing")
+})
 
 router.post("/signup", async(req, res) => {
     // check the user
@@ -25,7 +31,6 @@ router.post("/signup", async(req, res) => {
     const hashedPassword = await bcrypt.hash(parsedData.data.password, 10)
 
     try {
-        console.log('before')
         const user = await client.user.create({
             data: {
                 username: parsedData.data.username,
@@ -33,7 +38,6 @@ router.post("/signup", async(req, res) => {
                 role: parsedData.data.type === "admin" ? "Admin" : "User",
             },
         })
-        console.log('after')
         res.json({
             userId: user.id
         })
@@ -80,8 +84,14 @@ router.post("/signin", async(req, res) => {
             })
             return
         }
+
+        const token = jwt.sign({
+            userId: user.id,
+            role: user.role
+        }, JWT_SECRET)
+
         res.json({
-            token: jwt.sign({ userId: user.id }, JWT_SECRET)
+            token
         })
 
     } catch (error) {
@@ -93,9 +103,29 @@ router.post("/signin", async(req, res) => {
 
 })
 
-router.get("/elements", (req, res) => {})
-router.get("/avatars", (req, res) => {})
+router.get("/elements", async (req, res) => {
+    const elements = await client.element.findMany()
+    res.json({
+        elements: elements.map(x => ({
+            id: x.id,
+            imageUrl: x.imageUrl,
+            static: x.static,
+            height: x.height,
+            width: x.width
+        }))
+    })
+})
+router.get("/avatars", async(req, res) => {
+    const avatars = await client.avatar.findMany()
+    res.json({
+        avatars: avatars.map(x => ({
+            id: x.id,
+            imageUrl: x.imageUrl,
+            name: x.name
+        }))
+    })
+})
 
 router.use("/user", userRouter)
 router.use("/space", spaceRouter)
-router.use("/admin", adminRouter)
+router.use("/admin", adminMiddleware, adminRouter)
